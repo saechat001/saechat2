@@ -10,8 +10,8 @@ body {font-family:sans-serif; background:#111; color:#eee; margin:0; padding:0;}
 input, select, button {padding:10px; margin:4px 0; border:none; border-radius:6px; background:#222; color:#eee;}
 #chat {flex:1; overflow-y:auto; background:#222; padding:10px; border-radius:6px; margin-bottom:8px;}
 .msg {display:flex; align-items:flex-start; padding:6px; margin:4px 0; border-radius:10px; max-width:80%; word-wrap:break-word; transition:all 0.2s;}
-.mine {justify-content:flex-end; background:#0a3; margin-left:auto;}
-.theirs {justify-content:flex-start; background:#333; margin-right:auto;}
+.mine {justify-content:flex-end; margin-left:auto;}
+.theirs {justify-content:flex-start; margin-right:auto;}
 .avatar {width:32px; height:32px; border-radius:50%; margin-right:6px;}
 #inputContainer {display:flex; gap:4px; position:sticky; bottom:0; background:#111; padding:4px;}
 #msgInput {flex:1;}
@@ -41,7 +41,6 @@ input, select, button {padding:10px; margin:4px 0; border:none; border-radius:6p
 
 <div id="online">Online: </div>
 
-<!-- Profile panel -->
 <div id="profilePanel">
 <h4>Profile</h4>
 <input id="profileUsername" placeholder="Username">
@@ -104,85 +103,98 @@ function updateProfile(){
 
 // Login
 function login(){
-currentUser=document.getElementById('username').value.trim();
-avatarURL=document.getElementById('avatarInput').value.trim() || 'https://i.imgur.com/0rVeh4V.png';
-if(!currentUser){alert('Enter a username'); return;}
+  currentUser=document.getElementById('username').value.trim();
+  avatarURL=document.getElementById('avatarInput').value.trim() || 'https://i.imgur.com/0rVeh4V.png';
+  if(!currentUser){ alert('Enter a username'); return; }
 
-// Switch to default room first
-switchRoom();
+  // Initialize default room first
+  currentRoom = 'general';
+  channel = ably.channels.get(currentRoom);
 
-// Enter chat and presence AFTER channel is ready
-channel.presence.enter({user:currentUser, avatar:avatarURL});
+  // Enter presence after channel is ready
+  channel.presence.enter({user: currentUser, avatar: avatarURL}, err => {
+    if(err){ console.error('Presence error:', err); return; }
 
-// Subscribe presence updates
-channel.presence.subscribe('enter', m=>updateOnline(m.clientId,true));
-channel.presence.subscribe('leave', m=>updateOnline(m.clientId,false));
+    // Subscribe presence updates
+    channel.presence.subscribe('enter', m => updateOnline(m.clientId, true));
+    channel.presence.subscribe('leave', m => updateOnline(m.clientId, false));
 
-// Show chat
-document.getElementById('loginDiv').style.display='none';
-document.getElementById('chatDiv').style.display='';
+    // Subscribe messages
+    channel.subscribe('chat', msg => {
+      addMessage(msg.data.user, msg.data.text, msg.data.timestamp, msg.data.avatar, msg.data.reactions||[], msg.data.msgId, msg.data.color||'#0a3');
+    });
+    channel.subscribe('reaction', msg => updateReactions(msg.data.msgId, msg.data.reactions));
+
+    // Show chat
+    document.getElementById('loginDiv').style.display='none';
+    document.getElementById('chatDiv').style.display='';
+  });
 }
 
 // Switch room
 function switchRoom(){
-currentRoom=document.getElementById('roomSelect').value;
-if(channel) channel.unsubscribe();
-channel=ably.channels.get(currentRoom);
-channel.subscribe('chat', msg=>{
-  addMessage(msg.data.user,msg.data.text,msg.data.timestamp,msg.data.avatar,msg.data.reactions||[],msg.data.msgId,msg.data.color||'#0a3');
-});
-channel.subscribe('reaction', msg=>updateReactions(msg.data.msgId,msg.data.reactions));
-channel.presence.get((err,members)=>{onlineUsers=new Set(members.map(m=>m.clientId)); renderOnline();});
+  currentRoom=document.getElementById('roomSelect').value;
+  if(channel) channel.unsubscribe();
+  channel=ably.channels.get(currentRoom);
+
+  // Subscribe messages
+  channel.subscribe('chat', msg => {
+    addMessage(msg.data.user, msg.data.text, msg.data.timestamp, msg.data.avatar, msg.data.reactions||[], msg.data.msgId, msg.data.color||'#0a3');
+  });
+  channel.subscribe('reaction', msg => updateReactions(msg.data.msgId, msg.data.reactions));
+
+  // Get online users
+  channel.presence.get((err, members)=>{onlineUsers=new Set(members.map(m=>m.clientId)); renderOnline();});
 }
 
 // Send message
 function sendMessage(){
-const text=document.getElementById('msgInput').value.trim();
-if(!text) return;
-const timestamp=new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
-const msgId='msg-'+Date.now();
-channel.publish('chat',{user:currentUser,text,timestamp,avatar:avatarURL,reactions:[],msgId,color:accentColor});
-document.getElementById('msgInput').value='';
+  const text=document.getElementById('msgInput').value.trim();
+  if(!text) return;
+  const timestamp=new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+  const msgId='msg-'+Date.now();
+  channel.publish('chat',{user:currentUser,text,timestamp,avatar:avatarURL,reactions:[],msgId,color:accentColor});
+  document.getElementById('msgInput').value='';
 }
 
 // Add message
 function addMessage(user,text,timestamp,avatar,reactions,msgId,color){
-const chat=document.getElementById('chat');
-const cls=user===currentUser?'mine':'theirs';
-let reactionHTML=reactions.map(r=>`<span class="reaction" onclick="react('${msgId}','${r}')">${r}</span>`).join('');
-chat.innerHTML+=`<div class="msg ${cls}" id="${msgId}" style="background:${cls==='mine'?accentColor:'#333'}">
-${cls==='theirs'?`<img class="avatar" src="${avatar}" alt="avatar">`:''}
-<div><b>${user}</b> [${timestamp}]: ${text} ${reactionHTML}</div>
-${cls==='mine'?`<img class="avatar" src="${avatar}" alt="avatar">`:''}
-</div>`;
-chat.scrollTop=chat.scrollHeight;
-if(user!==currentUser) document.getElementById('notifySound').play();
+  const chat=document.getElementById('chat');
+  const cls=user===currentUser?'mine':'theirs';
+  let reactionHTML=reactions.map(r=>`<span class="reaction" onclick="react('${msgId}','${r}')">${r}</span>`).join('');
+  chat.innerHTML+=`<div class="msg ${cls}" id="${msgId}" style="background:${cls==='mine'?accentColor:'#333'}">
+  ${cls==='theirs'?`<img class="avatar" src="${avatar}" alt="avatar">`:''}
+  <div><b>${user}</b> [${timestamp}]: ${text} ${reactionHTML}</div>
+  ${cls==='mine'?`<img class="avatar" src="${avatar}" alt="avatar">`:''}
+  </div>`;
+  chat.scrollTop=chat.scrollHeight;
+  if(user!==currentUser) document.getElementById('notifySound').play();
 }
 
 // React to message
 function react(msgId,emoji){
-const msgDiv=document.getElementById(msgId);
-if(!msgDiv) return;
-let reactions=Array.from(msgDiv.querySelectorAll('.reaction')).map(r=>r.innerText);
-reactions.push(emoji);
-channel.publish('reaction',{msgId,reactions});
-updateReactions(msgId,reactions);
+  const msgDiv=document.getElementById(msgId);
+  if(!msgDiv) return;
+  let reactions=Array.from(msgDiv.querySelectorAll('.reaction')).map(r=>r.innerText);
+  reactions.push(emoji);
+  channel.publish('reaction',{msgId,reactions});
+  updateReactions(msgId,reactions);
 }
 
 // Update reactions
 function updateReactions(msgId,reactions){
-const msgDiv=document.getElementById(msgId);
-if(!msgDiv) return;
-const textDiv=msgDiv.querySelector('div');
-let content=textDiv.innerHTML.replace(/<span class="reaction".*?<\/span>/g,'');
-textDiv.innerHTML=content+' '+reactions.map(r=>`<span class="reaction" onclick="react('${msgId}','${r}')">${r}</span>`).join('');
+  const msgDiv=document.getElementById(msgId);
+  if(!msgDiv) return;
+  const textDiv=msgDiv.querySelector('div');
+  let content=textDiv.innerHTML.replace(/<span class="reaction".*?<\/span>/g,'');
+  textDiv.innerHTML=content+' '+reactions.map(r=>`<span class="reaction" onclick="react('${msgId}','${r}')">${r}</span>`).join('');
 }
 
 // Online users
 function updateOnline(user,isOnline){
-if(isOnline) onlineUsers.add(user);
-else onlineUsers.delete(user);
-renderOnline();
+  if(isOnline) onlineUsers.add(user);
+  else onlineUsers.delete(user);
+  renderOnline();
 }
 function renderOnline(){document.getElementById('online').innerText='Online: '+Array.from(onlineUsers).join(', ');}
 </script>
