@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>SaeChat Pro v3</title>
+<title>SaeChat Pro v3 Working</title>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <style>
 body {font-family:sans-serif; background:#111; color:#eee; margin:0; padding:0;}
@@ -72,8 +72,11 @@ input, select, button {padding:10px; margin:4px 0; border:none; border-radius:6p
 <script src="https://cdn.ably.io/lib/ably.min-1.js"></script>
 <script>
 let currentUser='', avatarURL='', accentColor='#0a3', ably, channel, currentRoom='general';
-const ABLY_API_KEY='zFU24w.Ml8jHw:fKGMtk-wA5RY6YKky1U7T8WCCXkqtju7CdL8Rs1SBLk';
+const ABLY_API_KEY='zFU24w.Ml8jHw:fKGMtk-wA5RY6YKky1U7T8WCCXkqtju7CdL8Rs1SBLk'; // Your client key
 let onlineUsers = new Set();
+
+// Initialize Ably
+ably = new Ably.Realtime(zFU24w.Ml8jHw:fKGMtk-wA5RY6YKky1U7T8WCCXkqtju7CdL8Rs1SBLk);
 
 // Emoji picker
 const emojis=['😀','😂','😍','😎','😢','👍','❤️','🔥','🎉'];
@@ -85,7 +88,7 @@ emojis.forEach(e=>{
   emojiPicker.appendChild(span);
 });
 
-// Profile panel toggle
+// Profile panel
 function toggleProfile(){ 
   const panel=document.getElementById('profilePanel');
   panel.style.display = panel.style.display==='none'?'block':'none';
