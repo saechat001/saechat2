@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>SaeChat Pro v3 Working</title>
+<title>SaeChat Pro v3 Fixed Login</title>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <style>
 body {font-family:sans-serif; background:#111; color:#eee; margin:0; padding:0;}
@@ -10,8 +10,8 @@ body {font-family:sans-serif; background:#111; color:#eee; margin:0; padding:0;}
 input, select, button {padding:10px; margin:4px 0; border:none; border-radius:6px; background:#222; color:#eee;}
 #chat {flex:1; overflow-y:auto; background:#222; padding:10px; border-radius:6px; margin-bottom:8px;}
 .msg {display:flex; align-items:flex-start; padding:6px; margin:4px 0; border-radius:10px; max-width:80%; word-wrap:break-word; transition:all 0.2s;}
-.mine {justify-content:flex-end; margin-left:auto;}
-.theirs {justify-content:flex-start; margin-right:auto;}
+.mine {justify-content:flex-end; margin-left:auto; background:#0a3;}
+.theirs {justify-content:flex-start; margin-right:auto; background:#333;}
 .avatar {width:32px; height:32px; border-radius:50%; margin-right:6px;}
 #inputContainer {display:flex; gap:4px; position:sticky; bottom:0; background:#111; padding:4px;}
 #msgInput {flex:1;}
@@ -102,32 +102,38 @@ function updateProfile(){
 }
 
 // Login
-function login(){
-  currentUser=document.getElementById('username').value.trim();
-  avatarURL=document.getElementById('avatarInput').value.trim() || 'https://i.imgur.com/0rVeh4V.png';
+function login() {
+  currentUser = document.getElementById('username').value.trim();
+  avatarURL = document.getElementById('avatarInput').value.trim() || 'https://i.imgur.com/0rVeh4V.png';
   if(!currentUser){ alert('Enter a username'); return; }
 
-  // Initialize default room first
+  // Show chat immediately
+  document.getElementById('loginDiv').style.display='none';
+  document.getElementById('chatDiv').style.display='';
+
+  // Initialize default room
   currentRoom = 'general';
   channel = ably.channels.get(currentRoom);
 
-  // Enter presence after channel is ready
-  channel.presence.enter({user: currentUser, avatar: avatarURL}, err => {
+  // Subscribe messages
+  channel.subscribe('chat', msg => {
+    addMessage(msg.data.user, msg.data.text, msg.data.timestamp, msg.data.avatar, msg.data.reactions||[], msg.data.msgId, msg.data.color||'#0a3');
+  });
+
+  // Subscribe reactions
+  channel.subscribe('reaction', msg => updateReactions(msg.data.msgId, msg.data.reactions));
+
+  // Subscribe presence
+  channel.presence.subscribe('enter', m => updateOnline(m.clientId, true));
+  channel.presence.subscribe('leave', m => updateOnline(m.clientId, false));
+
+  // Enter presence after subscriptions
+  channel.presence.enter({ user: currentUser, avatar: avatarURL }, err => {
     if(err){ console.error('Presence error:', err); return; }
-
-    // Subscribe presence updates
-    channel.presence.subscribe('enter', m => updateOnline(m.clientId, true));
-    channel.presence.subscribe('leave', m => updateOnline(m.clientId, false));
-
-    // Subscribe messages
-    channel.subscribe('chat', msg => {
-      addMessage(msg.data.user, msg.data.text, msg.data.timestamp, msg.data.avatar, msg.data.reactions||[], msg.data.msgId, msg.data.color||'#0a3');
+    channel.presence.get((err, members) => {
+      onlineUsers = new Set(members.map(m=>m.clientId));
+      renderOnline();
     });
-    channel.subscribe('reaction', msg => updateReactions(msg.data.msgId, msg.data.reactions));
-
-    // Show chat
-    document.getElementById('loginDiv').style.display='none';
-    document.getElementById('chatDiv').style.display='';
   });
 }
 
@@ -137,13 +143,10 @@ function switchRoom(){
   if(channel) channel.unsubscribe();
   channel=ably.channels.get(currentRoom);
 
-  // Subscribe messages
   channel.subscribe('chat', msg => {
     addMessage(msg.data.user, msg.data.text, msg.data.timestamp, msg.data.avatar, msg.data.reactions||[], msg.data.msgId, msg.data.color||'#0a3');
   });
   channel.subscribe('reaction', msg => updateReactions(msg.data.msgId, msg.data.reactions));
-
-  // Get online users
   channel.presence.get((err, members)=>{onlineUsers=new Set(members.map(m=>m.clientId)); renderOnline();});
 }
 
