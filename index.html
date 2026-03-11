@@ -1,36 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>SaeChat Real-Time</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <style>
+    body {font-family:sans-serif; background:#111; color:#eee; margin:0; padding:10px;}
+    h1 {text-align:center;}
+    input {width:100%; padding:8px; margin:4px 0; border:none; border-radius:4px; background:#222; color:#eee;}
+    button {width:100%; padding:8px; margin:4px 0; border:none; border-radius:4px; background:#555; color:#eee; cursor:pointer;}
+    #chat {height:400px; overflow-y:auto; background:#222; padding:10px; border-radius:6px; margin-top:8px;}
+    .msg {padding:4px; margin:2px 0;}
+    .mine {text-align:right; color:#0af;}
+    .theirs {text-align:left;}
+  </style>
+</head>
+<body>
+<h1>SaeChat</h1>
+
+<div id="loginDiv">
+  <input id="username" placeholder="Enter your username">
+  <button onclick="login()">Login</button>
+</div>
+
+<div id="chatDiv" style="display:none;">
+  <div id="chat"></div>
+  <input id="msgInput" placeholder="Type a message">
+  <button onclick="sendMessage()">Send</button>
+</div>
+
+<!-- Ably Realtime Library -->
 <script src="https://cdn.ably.io/lib/ably.min-1.js"></script>
 <script>
 let currentUser = '';
-const channelName = 'saechat-group';
-let ably;
+let ably, channel;
 
-function login(){
+// Your Ably client API key (publish & subscribe)
+const ABLY_API_KEY = 'zFU24w.ickmyA:EZkgpmZcM_f3FCfO_r494Z67DEGq8jKefIp9GOGfNZU';
+const CHANNEL_NAME = 'saechat-group';
+
+function login() {
   currentUser = document.getElementById('username').value.trim();
-  if(!currentUser){alert('Enter username'); return;}
-  document.getElementById('loginDiv').style.display='none';
-  document.getElementById('chatDiv').style.display='';
+  if (!currentUser) { alert('Enter a username'); return; }
   
-  // Connect to Ably
-  ably = new Ably.Realtime(zFU24w.ickmyA:EZkgpmZcM_f3FCfO_r494Z67DEGq8jKefIp9GOGfNZU');
-  const channel = ably.channels.get(channelName);
+  document.getElementById('loginDiv').style.display = 'none';
+  document.getElementById('chatDiv').style.display = '';
+  
+  // Connect to Ably Realtime
+  ably = new Ably.Realtime(ABLY_API_KEY);
+  channel = ably.channels.get(CHANNEL_NAME);
 
-  // Listen for messages
-  channel.subscribe(function(msg){
+  // Subscribe to incoming messages
+  channel.subscribe('chat', function(msg) {
     addMessage(msg.data.user, msg.data.text);
   });
-  
-  window.sendMessage = function(){
-    const text = document.getElementById('msgInput').value.trim();
-    if(!text) return;
-    channel.publish('chat', {user: currentUser, text});
-    document.getElementById('msgInput').value='';
-  };
+
+  // Auto focus input
+  document.getElementById('msgInput').focus();
 }
 
-function addMessage(user, text){
+function sendMessage() {
+  const text = document.getElementById('msgInput').value.trim();
+  if (!text) return;
+  // Publish message to Ably channel
+  channel.publish('chat', { user: currentUser, text });
+  document.getElementById('msgInput').value = '';
+}
+
+function addMessage(user, text) {
   const chat = document.getElementById('chat');
-  const cls = user===currentUser ? 'mine':'theirs';
+  const cls = user === currentUser ? 'mine' : 'theirs';
   chat.innerHTML += `<div class="msg ${cls}"><b>${user}:</b> ${text}</div>`;
   chat.scrollTop = chat.scrollHeight;
 }
 </script>
+</body>
+</html>
