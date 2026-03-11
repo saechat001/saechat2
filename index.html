@@ -1,77 +1,179 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>SaeChat Real-Time</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <style>
-    body {font-family:sans-serif; background:#111; color:#eee; margin:0; padding:10px;}
-    h1 {text-align:center;}
-    input {width:100%; padding:8px; margin:4px 0; border:none; border-radius:4px; background:#222; color:#eee;}
-    button {width:100%; padding:8px; margin:4px 0; border:none; border-radius:4px; background:#555; color:#eee; cursor:pointer;}
-    #chat {height:400px; overflow-y:auto; background:#222; padding:10px; border-radius:6px; margin-top:8px;}
-    .msg {padding:4px; margin:2px 0;}
-    .mine {text-align:right; color:#0af;}
-    .theirs {text-align:left;}
-  </style>
+<title>SaeChat Pro v3</title>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<style>
+body {font-family:sans-serif; background:#111; color:#eee; margin:0; padding:0;}
+#container {display:flex; flex-direction:column; height:100vh;}
+#loginDiv, #chatDiv {padding:10px; flex:1; display:flex; flex-direction:column;}
+input, select, button {padding:10px; margin:4px 0; border:none; border-radius:6px; background:#222; color:#eee;}
+#chat {flex:1; overflow-y:auto; background:#222; padding:10px; border-radius:6px; margin-bottom:8px;}
+.msg {display:flex; align-items:flex-start; padding:6px; margin:4px 0; border-radius:10px; max-width:80%; word-wrap:break-word; transition:all 0.2s;}
+.mine {justify-content:flex-end; background:#0a3; margin-left:auto;}
+.theirs {justify-content:flex-start; background:#333; margin-right:auto;}
+.avatar {width:32px; height:32px; border-radius:50%; margin-right:6px;}
+#inputContainer {display:flex; gap:4px; position:sticky; bottom:0; background:#111; padding:4px;}
+#msgInput {flex:1;}
+.reaction {cursor:pointer; margin-left:4px;}
+#online {background:#222; padding:6px; border-radius:6px; margin-bottom:4px;}
+#emojiPicker {display:flex; flex-wrap:wrap; background:#222; padding:4px; border-radius:6px; margin-bottom:4px; max-height:100px; overflow-y:auto;}
+.emoji {padding:4px; cursor:pointer;}
+#profilePanel {background:#222; padding:8px; border-radius:6px; margin-bottom:4px; display:none;}
+#profilePanel input, #profilePanel button {width:100%; margin:2px 0;}
+</style>
 </head>
 <body>
-<h1>SaeChat</h1>
+<div id="container">
 
 <div id="loginDiv">
-  <input id="username" placeholder="Enter your username">
-  <button onclick="login()">Login</button>
+<input id="username" placeholder="Enter username">
+<input id="avatarInput" placeholder="Avatar URL (optional)">
+<button onclick="login()">Login</button>
 </div>
 
-<div id="chatDiv" style="display:none;">
-  <div id="chat"></div>
-  <input id="msgInput" placeholder="Type a message">
-  <button onclick="sendMessage()">Send</button>
+<div id="chatDiv" style="display:none; flex:1;">
+<select id="roomSelect" onchange="switchRoom()">
+<option value="general">General</option>
+<option value="gaming">Gaming</option>
+<option value="school">School</option>
+</select>
+
+<div id="online">Online: </div>
+
+<!-- Profile panel -->
+<div id="profilePanel">
+<h4>Profile</h4>
+<input id="profileUsername" placeholder="Username">
+<input id="profileAvatar" placeholder="Avatar URL">
+<select id="profileColor">
+<option value="#0a3">Green (default)</option>
+<option value="#3a0">Light Green</option>
+<option value="#0a3f">Teal</option>
+<option value="#a03">Red</option>
+</select>
+<button onclick="updateProfile()">Save Profile</button>
+<button onclick="toggleProfile()">Close Profile</button>
+</div>
+<button onclick="toggleProfile()">Edit Profile</button>
+
+<div id="emojiPicker"></div>
+<div id="chat"></div>
+
+<div id="inputContainer">
+<input id="msgInput" placeholder="Type a message">
+<button onclick="sendMessage()">Send</button>
+</div>
+</div>
 </div>
 
-<!-- Ably Realtime Library -->
+<audio id="notifySound" src="https://www.soundjay.com/buttons/sounds/button-16.mp3"></audio>
+
 <script src="https://cdn.ably.io/lib/ably.min-1.js"></script>
 <script>
-let currentUser = '';
-let ably, channel;
+let currentUser='', avatarURL='', accentColor='#0a3', ably, channel, currentRoom='general';
+const ABLY_API_KEY='zFU24w.Ml8jHw:fKGMtk-wA5RY6YKky1U7T8WCCXkqtju7CdL8Rs1SBLk';
+let onlineUsers = new Set();
 
-// Your Ably client API key (publish & subscribe)
-const ABLY_API_KEY = 'zFU24w.Ml8jHw:fKGMtk-wA5RY6YKky1U7T8WCCXkqtju7CdL8Rs1SBLk';
-const CHANNEL_NAME = 'saechat-group';
+// Emoji picker
+const emojis=['😀','😂','😍','😎','😢','👍','❤️','🔥','🎉'];
+const emojiPicker=document.getElementById('emojiPicker');
+emojis.forEach(e=>{
+  const span=document.createElement('span');
+  span.className='emoji'; span.innerText=e;
+  span.onclick=()=>{ document.getElementById('msgInput').value+=e; }
+  emojiPicker.appendChild(span);
+});
 
-function login() {
-  currentUser = document.getElementById('username').value.trim();
-  if (!currentUser) { alert('Enter a username'); return; }
-  
-  document.getElementById('loginDiv').style.display = 'none';
-  document.getElementById('chatDiv').style.display = '';
-  
-  // Connect to Ably Realtime
-  ably = new Ably.Realtime(ABLY_API_KEY);
-  channel = ably.channels.get(CHANNEL_NAME);
-
-  // Subscribe to incoming messages
-  channel.subscribe('chat', function(msg) {
-    addMessage(msg.data.user, msg.data.text);
-  });
-
-  // Auto focus input
-  document.getElementById('msgInput').focus();
+// Profile panel toggle
+function toggleProfile(){ 
+  const panel=document.getElementById('profilePanel');
+  panel.style.display = panel.style.display==='none'?'block':'none';
+  document.getElementById('profileUsername').value=currentUser;
+  document.getElementById('profileAvatar').value=avatarURL;
+  document.getElementById('profileColor').value=accentColor;
+}
+function updateProfile(){
+  currentUser=document.getElementById('profileUsername').value.trim()||currentUser;
+  avatarURL=document.getElementById('profileAvatar').value.trim()||avatarURL;
+  accentColor=document.getElementById('profileColor').value;
 }
 
-function sendMessage() {
-  const text = document.getElementById('msgInput').value.trim();
-  if (!text) return;
-  // Publish message to Ably channel
-  channel.publish('chat', { user: currentUser, text });
-  document.getElementById('msgInput').value = '';
+// Login
+function login(){
+currentUser=document.getElementById('username').value.trim();
+avatarURL=document.getElementById('avatarInput').value.trim() || 'https://i.imgur.com/0rVeh4V.png';
+if(!currentUser){alert('Enter a username'); return;}
+document.getElementById('loginDiv').style.display='none';
+document.getElementById('chatDiv').style.display='';
+switchRoom();
+channel.presence.enter({user:currentUser, avatar:avatarURL});
+channel.presence.subscribe('enter', m=>updateOnline(m.clientId,true));
+channel.presence.subscribe('leave', m=>updateOnline(m.clientId,false));
 }
 
-function addMessage(user, text) {
-  const chat = document.getElementById('chat');
-  const cls = user === currentUser ? 'mine' : 'theirs';
-  chat.innerHTML += `<div class="msg ${cls}"><b>${user}:</b> ${text}</div>`;
-  chat.scrollTop = chat.scrollHeight;
+// Switch room
+function switchRoom(){
+currentRoom=document.getElementById('roomSelect').value;
+if(channel) channel.unsubscribe();
+channel=ably.channels.get(currentRoom);
+channel.subscribe('chat', msg=>{
+  addMessage(msg.data.user,msg.data.text,msg.data.timestamp,msg.data.avatar,msg.data.reactions||[],msg.data.msgId,msg.data.color||'#0a3');
+});
+channel.subscribe('reaction', msg=>updateReactions(msg.data.msgId,msg.data.reactions));
+channel.presence.get((err,members)=>{onlineUsers=new Set(members.map(m=>m.clientId)); renderOnline();});
 }
+
+// Send message
+function sendMessage(){
+const text=document.getElementById('msgInput').value.trim();
+if(!text) return;
+const timestamp=new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+const msgId='msg-'+Date.now();
+channel.publish('chat',{user:currentUser,text,timestamp,avatar:avatarURL,reactions:[],msgId,color:accentColor});
+document.getElementById('msgInput').value='';
+}
+
+// Add message
+function addMessage(user,text,timestamp,avatar,reactions,msgId,color){
+const chat=document.getElementById('chat');
+const cls=user===currentUser?'mine':'theirs';
+let reactionHTML=reactions.map(r=>`<span class="reaction" onclick="react('${msgId}','${r}')">${r}</span>`).join('');
+chat.innerHTML+=`<div class="msg ${cls}" id="${msgId}" style="background:${cls==='mine'?accentColor:'#333'}">
+${cls==='theirs'?`<img class="avatar" src="${avatar}" alt="avatar">`:''}
+<div><b>${user}</b> [${timestamp}]: ${text} ${reactionHTML}</div>
+${cls==='mine'?`<img class="avatar" src="${avatar}" alt="avatar">`:''}
+</div>`;
+chat.scrollTop=chat.scrollHeight;
+if(user!==currentUser) document.getElementById('notifySound').play();
+}
+
+// React to message
+function react(msgId,emoji){
+const msgDiv=document.getElementById(msgId);
+if(!msgDiv) return;
+let reactions=Array.from(msgDiv.querySelectorAll('.reaction')).map(r=>r.innerText);
+reactions.push(emoji);
+channel.publish('reaction',{msgId,reactions});
+updateReactions(msgId,reactions);
+}
+
+// Update reactions
+function updateReactions(msgId,reactions){
+const msgDiv=document.getElementById(msgId);
+if(!msgDiv) return;
+const textDiv=msgDiv.querySelector('div');
+let content=textDiv.innerHTML.replace(/<span class="reaction".*?<\/span>/g,'');
+textDiv.innerHTML=content+' '+reactions.map(r=>`<span class="reaction" onclick="react('${msgId}','${r}')">${r}</span>`).join('');
+}
+
+// Online users
+function updateOnline(user,isOnline){
+if(isOnline) onlineUsers.add(user);
+else onlineUsers.delete(user);
+renderOnline();
+}
+function renderOnline(){document.getElementById('online').innerText='Online: '+Array.from(onlineUsers).join(', ');}
 </script>
 </body>
 </html>
