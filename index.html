@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>SaeChat Pro v3 Fixed Login</title>
+<title>SaeChat Pro v3 Working</title>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <style>
 body {font-family:sans-serif; background:#111; color:#eee; margin:0; padding:0;}
@@ -74,9 +74,6 @@ let currentUser='', avatarURL='', accentColor='#0a3', ably, channel, currentRoom
 const ABLY_API_KEY='zFU24w.Ml8jHw:fKGMtk-wA5RY6YKky1U7T8WCCXkqtju7CdL8Rs1SBLk';
 let onlineUsers = new Set();
 
-// Initialize Ably
-ably = new Ably.Realtime(ABLY_API_KEY);
-
 // Emoji picker
 const emojis=['😀','😂','😍','😎','😢','👍','❤️','🔥','🎉'];
 const emojiPicker=document.getElementById('emojiPicker');
@@ -101,17 +98,20 @@ function updateProfile(){
   accentColor=document.getElementById('profileColor').value;
 }
 
-// Login
+// Login function (fixed with clientId)
 function login() {
   currentUser = document.getElementById('username').value.trim();
   avatarURL = document.getElementById('avatarInput').value.trim() || 'https://i.imgur.com/0rVeh4V.png';
   if(!currentUser){ alert('Enter a username'); return; }
 
-  // Show chat immediately
+  // Initialize Ably with clientId = username
+  ably = new Ably.Realtime({ key: ABLY_API_KEY, clientId: currentUser });
+
+  // Show chat UI
   document.getElementById('loginDiv').style.display='none';
   document.getElementById('chatDiv').style.display='';
 
-  // Initialize default room
+  // Default room
   currentRoom = 'general';
   channel = ably.channels.get(currentRoom);
 
@@ -127,9 +127,9 @@ function login() {
   channel.presence.subscribe('enter', m => updateOnline(m.clientId, true));
   channel.presence.subscribe('leave', m => updateOnline(m.clientId, false));
 
-  // Enter presence after subscriptions
+  // Enter presence
   channel.presence.enter({ user: currentUser, avatar: avatarURL }, err => {
-    if(err){ console.error('Presence error:', err); return; }
+    if(err){ console.error('Presence error:', err); alert('Presence failed!'); return; }
     channel.presence.get((err, members) => {
       onlineUsers = new Set(members.map(m=>m.clientId));
       renderOnline();
