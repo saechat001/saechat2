@@ -72,11 +72,11 @@ input, select, button {padding:10px; margin:4px 0; border:none; border-radius:6p
 <script src="https://cdn.ably.io/lib/ably.min-1.js"></script>
 <script>
 let currentUser='', avatarURL='', accentColor='#0a3', ably, channel, currentRoom='general';
-const ABLY_API_KEY='zFU24w.Ml8jHw:fKGMtk-wA5RY6YKky1U7T8WCCXkqtju7CdL8Rs1SBLk'; // Your client key
+const ABLY_API_KEY='zFU24w.Ml8jHw:fKGMtk-wA5RY6YKky1U7T8WCCXkqtju7CdL8Rs1SBLk';
 let onlineUsers = new Set();
 
 // Initialize Ably
-ably = new Ably.Realtime(zFU24w.Ml8jHw:fKGMtk-wA5RY6YKky1U7T8WCCXkqtju7CdL8Rs1SBLk);
+ably = new Ably.Realtime(ABLY_API_KEY);
 
 // Emoji picker
 const emojis=['😀','😂','😍','😎','😢','👍','❤️','🔥','🎉'];
@@ -107,12 +107,20 @@ function login(){
 currentUser=document.getElementById('username').value.trim();
 avatarURL=document.getElementById('avatarInput').value.trim() || 'https://i.imgur.com/0rVeh4V.png';
 if(!currentUser){alert('Enter a username'); return;}
-document.getElementById('loginDiv').style.display='none';
-document.getElementById('chatDiv').style.display='';
+
+// Switch to default room first
 switchRoom();
+
+// Enter chat and presence AFTER channel is ready
 channel.presence.enter({user:currentUser, avatar:avatarURL});
+
+// Subscribe presence updates
 channel.presence.subscribe('enter', m=>updateOnline(m.clientId,true));
 channel.presence.subscribe('leave', m=>updateOnline(m.clientId,false));
+
+// Show chat
+document.getElementById('loginDiv').style.display='none';
+document.getElementById('chatDiv').style.display='';
 }
 
 // Switch room
